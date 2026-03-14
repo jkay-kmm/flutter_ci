@@ -1,5 +1,9 @@
 name: Test, Build and Release apk
-on: push
+on:
+  push:
+    tags:
+      - 'v*' # Bắt buộc phải có thẻ tag bắt đầu bằng chữ 'v' (ví dụ v1.0, v1.2) thì mới chạy
+
 jobs:
   build:
     name: Build APK
