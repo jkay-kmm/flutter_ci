@@ -1,60 +1,58 @@
-# flutter_ci
+# Flutter CI/CD với GitHub Actions 
 
-A new Flutter project.
+Dự án này sử dụng GitHub Actions để tự động hóa quá trình Test, Build và Release file APK mỗi khi có phiên bản mới được đẩy lên.
 
-## Làm theo các bước ở file main.yaml
+Dưới đây là các bước thiết lập chi tiết để cấu hình CI/CD.
 
+---
 
+## Bước 1: Tạo file cấu hình Workflow
+Trong thư mục gốc của project, bạn cần tạo các thư mục và file với đường dẫn chính xác như sau:
+`.github/workflows/main.yaml`
 
+*(File `main.yaml` là nơi chứa kịch bản tự động hóa. Đảm bảo bạn đã dán chuẩn code cấu hình cho Flutter phiên bản mới nhất vào đây).*
 
-- [Mở project bằng bất kì IDE nào mà bạn thích, tạo file main.yaml trong .github/workflows/main.yaml (Tạo các folder .github, workflows nếu chưa có). File này chính là nơi chúng ta config workflow.](https://docs.flutter.dev/get-started/codelab)
-- [Tạo GitHub Personal Access Token (Mã thông báo cá nhân)
-  Mã này đóng vai trò như một chiếc "chìa khóa" để GitHub Actions có quyền truy cập và thực hiện các thay đổi (như tạo bản release) trên repo của bạn.
+## Bước 2: Tạo GitHub Personal Access Token (Mã thông báo cá nhân)
+Mã này đóng vai trò như một chiếc "chìa khóa" để GitHub Actions có quyền tạo bản Release mới trên kho lưu trữ của bạn.
 
-Đăng nhập vào GitHub, bấm vào ảnh đại diện của bạn ở góc trên cùng bên phải màn hình, chọn Settings (Cài đặt).
+1. Đăng nhập vào GitHub, bấm vào **ảnh đại diện** ở góc trên cùng bên phải > Chọn **Settings** (Cài đặt).
+2. Cuộn thanh menu bên trái xuống dưới cùng > Chọn **Developer settings**.
+3. Ở menu bên trái, chọn **Personal access tokens** > Click vào **Tokens (classic)**.
+4. Bấm nút **Generate new token** ở góc phải > Chọn **Generate new token (classic)**.
+5. Điền các thông tin cần thiết:
+    * **Note:** Đặt tên gợi nhớ, ví dụ: `Flutter CI/CD Token`.
+    * **Expiration:** Chọn thời hạn sống cho token (VD: `30 days`, `90 days`, hoặc `No expiration`).
+    * **Select scopes:** ⚠️ Quan trọng: Hãy **tích vào ô `repo`** để cấp quyền kiểm soát kho lưu trữ.
+6. Cuộn xuống cuối trang và bấm nút xanh **Generate token**.
+7. **LƯU Ý:** Màn hình sẽ hiện ra một đoạn mã dài (bắt đầu bằng `ghp_...`). Hãy **copy và lưu lại ngay lập tức** vì GitHub chỉ hiển thị nó một lần duy nhất.
 
-Cuộn thanh điều hướng bên trái xuống dưới cùng và chọn Developer settings (Cài đặt dành cho nhà phát triển).
+## Bước 3: Thêm Token vào Repository Secrets
+Bây giờ, bạn cần mang "chìa khóa" vừa tạo cất vào két sắt của dự án để file `main.yaml` có thể lấy ra sử dụng.
 
-Ở menu bên trái, chọn Personal access tokens, sau đó click vào Tokens (classic).
+1. Vào trang chính của kho lưu trữ (repository) dự án trên GitHub.
+2. Bấm vào tab **Settings** (Cài đặt).
+3. Ở thanh menu bên trái, tìm mục **Security** > Mở rộng mục **Secrets and variables** > Chọn **Actions**.
+4. Bấm vào nút màu xanh **New repository secret**.
+5. Điền thông tin như sau:
+    * **Name:** Nhập chính xác là `TOKEN` (Viết hoa toàn bộ).
+    * **Secret:** Dán (Paste) đoạn mã `ghp_...` vừa copy ở Bước 2 vào đây.
+6. Bấm **Add secret**.
 
-Bấm vào nút Generate new token ở góc phải và chọn Generate new token (classic). (Hệ thống có thể yêu cầu bạn nhập lại mật khẩu GitHub).
+## Bước 4: Đẩy code và kích hoạt Workflow
+Khi đã tạo xong cấu hình và gắn Token thành công, bạn chỉ cần commit code và đẩy lên kèm theo một thẻ phiên bản (tag).
 
-Điền các thông tin cần thiết:
+Mở terminal tại thư mục dự án và chạy lần lượt các lệnh sau:
 
-Note: Đặt một cái tên để dễ nhớ, ví dụ: Flutter CI/CD Token.
+```bash
+# 1. Thêm và lưu lại toàn bộ code (bao gồm cả thư mục .github)
+git add .
+git commit -m "Thêm cấu hình Github Actions CI/CD"
 
-Expiration: Chọn thời hạn sống cho token (ví dụ: 30 days, 90 days, hoặc No expiration).
+# 2. Đẩy code lên nhánh chính (thay main bằng nhánh của bạn nếu cần)
+git push origin main
 
-Select scopes: Đây là phần quan trọng nhất. Hãy tích vào ô repo (để cấp toàn quyền kiểm soát các kho lưu trữ cá nhân).
-
-Cuộn xuống cuối trang và bấm nút xanh Generate token.
-
-Màn hình sẽ hiện ra một đoạn mã dài (thường bắt đầu bằng ghp_...). Hãy copy đoạn mã này ngay lập tức vì GitHub sẽ chỉ hiển thị nó một lần duy nhất.
-
-Phần 2: Thêm Token vào kho lưu trữ (Repository Secrets)
-Bây giờ bạn cần mang "chìa khóa" vừa tạo cất vào két sắt của dự án để file main.yaml có thể lấy ra sử dụng ở dòng ${{ secrets.TOKEN }}.
-
-Quay trở lại trang chính của kho lưu trữ (repository) chứa code Flutter của bạn.
-
-Bấm vào tab Settings (Cài đặt) của repo đó.
-
-Ở thanh menu bên trái, tìm mục Security, xổ tab Secrets and variables ra và chọn Actions.
-
-Bấm vào nút màu xanh New repository secret (Thêm secret mới cho kho lưu trữ).
-
-Điền thông tin như sau:
-
-Name: Nhập chính xác là TOKEN (viết hoa toàn bộ, vì trong file config ở Bước 3 tác giả đang gọi tên nó là TOKEN).
-
-Secret: Dán (Paste) đoạn mã ghp_... mà bạn vừa copy ở Phần 1 vào đây.
-
-Bấm Add secret.]()
-Bước 5 đẩy code lên Khi chúng ta đã tạo xong workflow file và thêm token vào project, chúng ta có thể push code lên Github với release tag và chạy workflow đã tạo.
-
-Ở dưới local, hãy commit tất cả các file bao gồm cả main.yaml phía trên và tạo một tag mới sử dụng lệnh git tag và đẩy code lên cùng với tag.
-
-Ví dụ:
-
+# 3. Tạo một tag phiên bản mới
 git tag v1.0
 
+# 4. Đẩy tag lên GitHub để kích hoạt Github Actions
 git push origin v1.0
