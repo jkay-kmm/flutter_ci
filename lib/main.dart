@@ -1,122 +1,205 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
+import 'dart:ui';
 
-void main() {
-  runApp(const MyApp());
+
+import 'package:camera/camera.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
+import 'package:tflite_flutter/tflite_flutter.dart';
+
+import 'firebase_options.dart';
+late List<CameraDescription> cameras;
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  cameras = await availableCameras();
+
+
+  // 1. Khởi động trạm Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // 2. Thu thập mọi lỗi do Flutter (UI, Logic) gây ra
+  FlutterError.onError = (errorDetails) {
+    FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
+  };
+
+  // 3. Thu thập mọi lỗi chạy ngầm (Asynchronous errors)
+  PlatformDispatcher.instance.onError = (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    return true;
+  };
+  runApp( MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: CameraScreen(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
+class CameraScreen extends StatefulWidget {
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  _CameraScreenState createState() => _CameraScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _CameraScreenState extends State<CameraScreen> {
+  late CameraController controller;
+  late Interpreter interpreter;
+  List<String> labels = [];
+  bool isModelLoaded = false;
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  String result = "Chưa nhận diện";
+
+  @override
+  void initState() {
+    super.initState();
+    initCamera();
+    loadModel();
+  }
+
+  Future<void> initCamera() async {
+    controller = CameraController(cameras[0], ResolutionPreset.medium);
+    await controller.initialize();
+    setState(() {});
+  }
+
+  Future<void> loadModel() async {
+    try {
+      print("🚀 Loading model...");
+
+      interpreter = await Interpreter.fromAsset('assets/model.tflite');
+
+      print("✅ Model loaded");
+      
+      // Debug: In thông tin về model
+      print("📊 Input shape: ${interpreter.getInputTensors()}");
+      print("📊 Output shape: ${interpreter.getOutputTensors()}");
+
+      final labelData = await rootBundle.loadString('assets/labels.txt');
+
+      print("✅ Labels loaded");
+
+      labels = labelData.split('\n').where((e) => e.isNotEmpty).toList();
+      
+      print("🏷️ Số lượng labels: ${labels.length}");
+      print("🏷️ Labels: $labels");
+
+      setState(() {
+        isModelLoaded = true;
+      });
+
+      print("🔥 Ready!");
+    } catch (e) {
+      print("❌ ERROR LOAD MODEL: $e");
+    }
+  }
+
+  Future<void> captureAndPredict() async {
+    try {
+      final image = await controller.takePicture();
+      final bytes = await File(image.path).readAsBytes();
+
+      img.Image? oriImage = img.decodeImage(bytes);
+      if (oriImage == null) {
+        print("❌ Không thể decode ảnh");
+        return;
+      }
+
+      img.Image resized = img.copyResize(oriImage, width: 224, height: 224);
+
+      var input = List.generate(
+        1,
+            (i) => List.generate(
+          224,
+              (y) => List.generate(
+            224,
+                (x) {
+                  var pixel = resized.getPixel(x, y);
+
+                  return [
+                    pixel.r / 255.0,
+                    pixel.g / 255.0,
+                    pixel.b / 255.0,
+                  ];
+            },
+          ),
+        ),
+      );
+
+      var output = List.generate(1, (_) => List.filled(labels.length, 0.0));
+
+      interpreter.run(input, output);
+
+      List<double> resultList = List<double>.from(output[0]);
+      
+      // In ra tất cả kết quả để debug
+      print("🔍 Kết quả dự đoán:");
+      for (int i = 0; i < labels.length; i++) {
+        print("${labels[i]}: ${(resultList[i] * 100).toStringAsFixed(2)}%");
+      }
+
+      int maxIndex = resultList.indexWhere(
+              (e) => e == resultList.reduce((a, b) => a > b ? a : b));
+
+      double confidence = resultList[maxIndex] * 100;
+
+      setState(() {
+        result = "${labels[maxIndex]} (${confidence.toStringAsFixed(1)}%)";
+      });
+    } catch (e) {
+      print("❌ Lỗi khi dự đoán: $e");
+      setState(() {
+        result = "Lỗi: $e";
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    if (!isModelLoaded) {
+      return Scaffold(
+        body: Center(child: Text("Đang load AI...")),
+      );
+    }
+    if (!controller.value.isInitialized) {
+      return Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+      appBar: AppBar(title: Text("AI Nhận diện rác")),
+      body: Column(
+        children: [
+          AspectRatio(
+            aspectRatio: controller.value.aspectRatio,
+            child: CameraPreview(controller),
+          ),
+          SizedBox(height: 20),
+          Text(
+            "Kết quả: $result",
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: isModelLoaded ? captureAndPredict : null,
+            child: Text("Chụp & Nhận diện"),
+          ),
+        ],
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    interpreter.close();
+    super.dispose();
   }
 }
